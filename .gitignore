@@ -1,0 +1,9 @@
+node_modules/
+processor/*.exe
+frontend/dist/
+
+# CSVs do dataset que o projeto não usa
+data/channels.csv
+data/deliveries.csv
+data/drivers.csv
+data/payments.csv

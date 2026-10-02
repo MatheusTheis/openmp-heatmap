@@ -1,0 +1,178 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background: #111317;
+  color: #e6e8eb;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ---------- Controles ---------- */
+
+.controles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px 24px;
+  padding: 14px 20px;
+  border-bottom: 1px solid #262a31;
+}
+
+h1 {
+  margin: 0 16px 6px 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #9aa1ab;
+}
+
+select,
+button {
+  font: inherit;
+  font-size: 14px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid #343a43;
+  border-radius: 6px;
+  background: #1b1e24;
+  color: #e6e8eb;
+  cursor: pointer;
+}
+
+button:disabled,
+select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.alternador {
+  display: flex;
+}
+
+.alternador button:first-child {
+  border-radius: 6px 0 0 6px;
+}
+
+.alternador button:last-child {
+  border-radius: 0 6px 6px 0;
+  border-left: none;
+}
+
+.alternador button.ativo {
+  background: #e6e8eb;
+  color: #111317;
+}
+
+.acoes {
+  display: flex;
+  gap: 8px;
+}
+
+button.primario {
+  background: #f46d43;
+  border-color: #f46d43;
+  color: #111317;
+  font-weight: 600;
+}
+
+/* ---------- Mapa ---------- */
+
+.mapa {
+  flex: 1;
+  min-height: 300px;
+  position: relative;
+}
+
+/* ---------- Status ---------- */
+
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 32px;
+  padding: 12px 20px;
+  border-top: 1px solid #262a31;
+}
+
+.indicador {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rotulo {
+  font-size: 12px;
+  color: #9aa1ab;
+}
+
+.indicador strong {
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.progresso {
+  flex: 1;
+  min-width: 160px;
+}
+
+.barra {
+  height: 10px;
+  margin-top: 4px;
+  border-radius: 5px;
+  background: #262a31;
+  overflow: hidden;
+}
+
+.preenchimento {
+  height: 100%;
+  background: #f46d43;
+}
+
+.mensagem {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.concluido {
+  color: #74c69d;
+}
+
+.erro {
+  color: #ff6b6b;
+}
+
+.legenda {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #9aa1ab;
+}
+
+.gradiente {
+  width: 120px;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(to right, #313695, #4575b4, #74add1, #fee090, #fdae61, #f46d43, #d73027);
+}
