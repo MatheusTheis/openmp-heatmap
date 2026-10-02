@@ -38,7 +38,7 @@ gcc -O2 main.c dados.c processamento.c -o processor.exe -fopenmp
 
 > Se o Windows reclamar de `libgomp-1.dll`, acrescente `-static` ao comando.
 
-**2. Backend** (porta 3001)
+**2. Backend**
 
 ```bash
 cd backend
@@ -46,7 +46,7 @@ npm install
 npm start
 ```
 
-**3. Frontend** (http://localhost:5173)
+**3. Frontend** 
 
 ```bash
 cd frontend
