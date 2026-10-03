@@ -174,5 +174,129 @@ button.primario {
   width: 120px;
   height: 8px;
   border-radius: 4px;
-  background: linear-gradient(to right, #313695, #4575b4, #74add1, #fee090, #fdae61, #f46d43, #d73027);
+  background: linear-gradient(to right, #1e90ff, #00dcff 4%, #00e676 16%, #ffeb3b 36%, #ff9800 64%, #f44336);
+}
+
+/* ---------- Card do lugar (preso ao ponto no mapa) ---------- */
+
+/* Acima do canvas do deck.gl, que fica num controle do mapa com z-index 2 */
+.marcador-card {
+  z-index: 3;
+}
+
+.card-lugar {
+  position: relative;
+  width: 240px;
+  padding: 12px 14px 14px;
+  border: 1px solid #343a43;
+  border-radius: 8px;
+  background: #1b1e24;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  color: #e6e8eb;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  cursor: default;
+}
+
+/* Setinha apontando para o lugar */
+.card-lugar::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  width: 10px;
+  height: 10px;
+  background: #1b1e24;
+  border-right: 1px solid #343a43;
+  border-bottom: 1px solid #343a43;
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.card-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.card-titulo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.card-lugar > .rotulo {
+  display: block;
+  margin-top: 2px;
+}
+
+.marcador-cor {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+button.fechar {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.card-total {
+  display: block;
+  margin: 6px 0 2px;
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.card-barra {
+  display: flex;
+  margin: 8px 0 10px;
+}
+
+.parte-realizados {
+  background: #74c69d;
+}
+
+.parte-cancelados {
+  flex: 1;
+  background: #ff6b6b;
+}
+
+.card-linha {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.card-linha strong {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.legenda-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #9aa1ab;
+}
+
+.legenda-item::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.legenda-item.realizados::before {
+  background: #74c69d;
+}
+
+.legenda-item.cancelados::before {
+  background: #ff6b6b;
 }

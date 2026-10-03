@@ -7,7 +7,6 @@
     "dev": "vite"
   },
   "dependencies": {
-    "@deck.gl/aggregation-layers": "^9.4.0",
     "@deck.gl/core": "^9.4.0",
     "@deck.gl/layers": "^9.4.0",
     "@deck.gl/mapbox": "^9.4.0",

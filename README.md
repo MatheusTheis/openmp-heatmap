@@ -22,7 +22,7 @@ processor/   C + OpenMP (leitura, processamento e saída JSON)
   processamento.c  processar_sequencial() e processar_openmp()
   main.c           argumentos, fluxo principal e saída JSON
 backend/     server.js: executa o processor e repassa cada linha via SSE
-frontend/    React + TypeScript + MapLibre + deck.gl (HeatmapLayer)
+frontend/    React + TypeScript + MapLibre + deck.gl (ScatterplotLayer: cor = quantidade de pedidos)
 ```
 
 ## Como executar
@@ -68,7 +68,9 @@ processor.exe "PORTO ALEGRE" openmp
 Cada lote de 25 000 pedidos gera uma linha JSON com o estado acumulado:
 
 ```json
-{"finalizado":false,"processados":25000,"total":368999,"tempo":0.000365,"threads":1,"pontos":[{"latitude":-30.03,"longitude":-51.20,"quantidade":40}]}
+{"finalizado":false,"processados":25000,"total":368999,"tempo":0.000162,"threads":1,"pontos":[{"hub":"GREEN SHOPPING","latitude":-30.0374149,"longitude":-51.2035200,"lojas":11,"quantidade":1705,"cancelados":45}]}
 ```
+
+Os pedidos são contados por loja (`orders.store_id`) e somados por **hub**: as dark kitchens ficam dentro de hubs (shoppings), e várias lojas diferentes dividem o mesmo endereço. Cada ponto é um hub, na coordenada do `hubs.csv`; `quantidade` é o total de pedidos das lojas do hub e `cancelados` quantos têm `order_status = CANCELED` (o resto foi realizado). Clicar em um ponto no mapa abre um card com esses números.
 
 O `tempo` mede **só o processamento** (CSVs já em memória; escrita do JSON fora do cronômetro). Os dois modos produzem exatamente os mesmos pontos — muda apenas o tempo.

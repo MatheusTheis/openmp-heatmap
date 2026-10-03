@@ -1,14 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import * as maplibregl from 'maplibre-gl';
 import { MapboxOverlay } from '@deck.gl/mapbox';
-import { HeatmapLayer } from '@deck.gl/aggregation-layers';
+import { ScatterplotLayer } from '@deck.gl/layers';
 
 type Modo = 'sequencial' | 'openmp';
 
+// Cada ponto enviado pelo C é um hub (shopping) com a soma das lojas dele
 type Ponto = {
+  hub: string;
   latitude: number;
   longitude: number;
+  lojas: number;
   quantidade: number;
+  cancelados: number;
 };
 
 type Atualizacao = {
@@ -33,35 +38,197 @@ const CIDADES: Record<string, { nome: string; centro: [number, number] }> = {
   'RIO DE JANEIRO': { nome: 'Rio de Janeiro', centro: [-43.3, -22.95] },
 };
 
-// Frio (azul) → quente (vermelho)
-const CORES: [number, number, number][] = [
-  [49, 54, 149],
-  [69, 117, 180],
-  [116, 173, 209],
-  [254, 224, 144],
-  [253, 174, 97],
-  [244, 109, 67],
-  [215, 48, 39],
+// Frio (azul) → quente (vermelho). O azul é claro para aparecer no mapa escuro.
+const CORES_BASE: [number, number, number][] = [
+  [30, 144, 255],
+  [0, 220, 255],
+  [0, 230, 118],
+  [255, 235, 59],
+  [255, 152, 0],
+  [244, 67, 54],
 ];
 
-// Escala de cor fixa: a região esquenta conforme os pedidos são somados.
-// Sem ela o deck.gl normaliza pelo maior valor e a cor quase não muda entre lotes.
-const ESCALA_COR: [number, number] = [20, 800];
+// Escala fixa: a partir desta quantidade o lugar fica vermelho.
+// Assim cada lugar esquenta conforme os lotes chegam.
+const PEDIDOS_COR_MAXIMA = 15000;
 
-function criarCamada(pontos: Ponto[]) {
-  return new HeatmapLayer<Ponto>({
-    id: 'pedidos',
-    data: pontos,
-    getPosition: (p) => [p.longitude, p.latitude],
-    getWeight: (p) => p.quantidade,
-    radiusPixels: 80,
-    colorRange: CORES,
-    colorDomain: ESCALA_COR,
+// Brilho de cada lugar: círculos maiores e transparentes da mesma cor do centro
+const BRILHO = [
+  { raio: 30, opacidade: 45 },
+  { raio: 20, opacidade: 90 },
+];
+const RAIO_CENTRO = 12;
+
+// Hubs a menos desta distância na tela viram um único lugar, para os
+// círculos não ficarem um em cima do outro. Ao dar zoom eles se separam.
+const DISTANCIA_MINIMA_PIXELS = 40;
+
+type Lugar = {
+  posicao: [number, number];
+  hubs: string[];
+  lojas: number;
+  quantidade: number;
+  cancelados: number;
+  cor: [number, number, number];
+};
+
+type Circulo = {
+  posicao: [number, number];
+  raio: number;
+  cor: [number, number, number, number];
+};
+
+// Cor do gradiente CORES_BASE na posição t (0 = frio, 1 = quente)
+function corNaPosicao(t: number): [number, number, number] {
+  const posicao = t * (CORES_BASE.length - 1);
+  const i = Math.min(Math.floor(posicao), CORES_BASE.length - 2);
+  const fracao = posicao - i;
+  const [r, g, b] = CORES_BASE[i].map((c, k) => Math.round(c + (CORES_BASE[i + 1][k] - c) * fracao));
+  return [r, g, b];
+}
+
+// Raiz quadrada: lugares com poucos pedidos já ganham uma cor visível
+function corDaQuantidade(quantidade: number) {
+  return corNaPosicao(Math.sqrt(Math.min(quantidade / PEDIDOS_COR_MAXIMA, 1)));
+}
+
+function distanciaMetros(a: [number, number], b: [number, number]) {
+  const metrosPorGrau = 111_000;
+  const dx = (a[0] - b[0]) * metrosPorGrau * Math.cos((a[1] * Math.PI) / 180);
+  const dy = (a[1] - b[1]) * metrosPorGrau;
+  return Math.hypot(dx, dy);
+}
+
+// Metros que 1 pixel representa no zoom atual (tiles de 512 px do MapLibre)
+function metrosPorPixel(zoom: number, latitude: number) {
+  return (40_075_016 * Math.cos((latitude * Math.PI) / 180)) / (512 * 2 ** zoom);
+}
+
+// Junta os hubs próximos na tela em lugares e soma os pedidos de cada lugar
+function agruparPorLugar(pontos: Ponto[], zoom: number): Lugar[] {
+  const lugares: Lugar[] = [];
+
+  // Maiores primeiro: cada lugar fica na posição do hub com mais pedidos
+  const ordenados = [...pontos].sort((a, b) => b.quantidade - a.quantidade);
+
+  for (const p of ordenados) {
+    const posicao: [number, number] = [p.longitude, p.latitude];
+    const limite = DISTANCIA_MINIMA_PIXELS * metrosPorPixel(zoom, p.latitude);
+    const proximo = lugares.find((l) => distanciaMetros(l.posicao, posicao) < limite);
+
+    if (proximo) {
+      proximo.hubs.push(p.hub);
+      proximo.lojas += p.lojas;
+      proximo.quantidade += p.quantidade;
+      proximo.cancelados += p.cancelados;
+    } else {
+      lugares.push({ posicao, hubs: [p.hub], lojas: p.lojas, quantidade: p.quantidade, cancelados: p.cancelados, cor: [0, 0, 0] });
+    }
+  }
+
+  lugares.forEach((lugar) => (lugar.cor = corDaQuantidade(lugar.quantidade)));
+
+  // Os mais quentes por último, para ficarem por cima
+  return lugares.sort((a, b) => a.quantidade - b.quantidade);
+}
+
+function criarCirculos(id: string, circulos: Circulo[]) {
+  return new ScatterplotLayer<Circulo>({
+    id,
+    data: circulos,
+    getPosition: (c) => c.posicao,
+    getRadius: (c) => c.raio,
+    getFillColor: (c) => c.cor,
+    radiusUnits: 'pixels',
+    pickable: true,
   });
+}
+
+// Primeiro o brilho completo de cada lugar (frios antes, quentes por cima),
+// depois todos os centros: o centro de um lugar nunca fica coberto.
+function criarCamadas(lugares: Lugar[]) {
+  const brilhos = lugares.flatMap(({ posicao, cor: [r, g, b] }) =>
+    BRILHO.map(({ raio, opacidade }): Circulo => ({ posicao, raio, cor: [r, g, b, opacidade] })),
+  );
+  const centros = lugares.map(({ posicao, cor: [r, g, b] }): Circulo => ({ posicao, raio: RAIO_CENTRO, cor: [r, g, b, 255] }));
+
+  return [criarCirculos('brilho', brilhos), criarCirculos('centro', centros)];
 }
 
 function formatarTempo(segundos: number) {
   return segundos < 1 ? `${(segundos * 1000).toFixed(2)} ms` : `${segundos.toFixed(2)} s`;
+}
+
+function formatarPercentual(parte: number, total: number) {
+  const percentual = total > 0 ? (parte / total) * 100 : 0;
+  return `${percentual.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
+}
+
+// Se o card (acima do ponto) for ficar cortado na borda, desliza o mapa até ele caber
+const CARD_LARGURA = 240;
+const CARD_ALTURA = 230;
+
+function abrirEspacoParaCard(mapa: maplibregl.Map, x: number, y: number) {
+  const { clientWidth: largura } = mapa.getContainer();
+  const margem = 12;
+
+  const faltaEmCima = Math.max(0, CARD_ALTURA + margem - y);
+  const faltaEsquerda = Math.max(0, CARD_LARGURA / 2 + margem - x);
+  const faltaDireita = Math.max(0, x + CARD_LARGURA / 2 + margem - largura);
+
+  if (faltaEmCima || faltaEsquerda || faltaDireita) {
+    mapa.panBy([faltaDireita - faltaEsquerda, -faltaEmCima]);
+  }
+}
+
+function mesmaPosicao(a: [number, number], b: [number, number]) {
+  return a[0] === b[0] && a[1] === b[1];
+}
+
+// Card do lugar clicado: hub, lojas e pedidos realizados x cancelados
+function CardLugar({ lugar, onFechar }: { lugar: Lugar; onFechar: () => void }) {
+  const realizados = lugar.quantidade - lugar.cancelados;
+
+  return (
+    <div className="card-lugar">
+      <div className="card-topo">
+        <span className="card-titulo">
+          <span className="marcador-cor" style={{ background: `rgb(${lugar.cor.join(',')})` }} />
+          {lugar.hubs.length === 1 ? lugar.hubs[0] : `${lugar.hubs.length} hubs próximos`}
+        </span>
+        <button className="fechar" onClick={onFechar} aria-label="Fechar">
+          ×
+        </button>
+      </div>
+
+      <span className="rotulo">
+        {lugar.lojas} {lugar.lojas === 1 ? 'loja' : 'lojas'}
+        {lugar.hubs.length > 1 && ` · ${lugar.hubs.join(', ')}`}
+      </span>
+
+      <strong className="card-total">
+        {lugar.quantidade.toLocaleString('pt-BR')} {lugar.quantidade === 1 ? 'pedido' : 'pedidos'}
+      </strong>
+
+      <div className="barra card-barra">
+        <div className="parte-realizados" style={{ width: `${(realizados / lugar.quantidade) * 100}%` }} />
+        <div className="parte-cancelados" />
+      </div>
+
+      <div className="card-linha">
+        <span className="legenda-item realizados">Realizados</span>
+        <strong>
+          {realizados.toLocaleString('pt-BR')} · {formatarPercentual(realizados, lugar.quantidade)}
+        </strong>
+      </div>
+      <div className="card-linha">
+        <span className="legenda-item cancelados">Cancelados</span>
+        <strong>
+          {lugar.cancelados.toLocaleString('pt-BR')} · {formatarPercentual(lugar.cancelados, lugar.quantidade)}
+        </strong>
+      </div>
+    </div>
+  );
 }
 
 export default function App() {
@@ -69,6 +236,12 @@ export default function App() {
   const mapa = useRef<maplibregl.Map | null>(null);
   const overlay = useRef<MapboxOverlay | null>(null);
   const conexao = useRef<EventSource | null>(null);
+  const marcador = useRef<maplibregl.Marker | null>(null);
+  const [elementoCard] = useState(() => {
+    const elemento = document.createElement('div');
+    elemento.className = 'marcador-card';
+    return elemento;
+  });
 
   const [cidade, setCidade] = useState('PORTO ALEGRE');
   const [modo, setModo] = useState<Modo>('sequencial');
@@ -76,6 +249,11 @@ export default function App() {
   const [executando, setExecutando] = useState(false);
   const [erro, setErro] = useState('');
   const [tempos, setTempos] = useState<Partial<Record<Modo, number>>>({});
+  const [zoom, setZoom] = useState(ZOOM_INICIAL);
+  const [selecionado, setSelecionado] = useState<[number, number] | null>(null);
+
+  const lugares = useMemo(() => agruparPorLugar(atualizacao?.pontos ?? [], zoom), [atualizacao, zoom]);
+  const lugarSelecionado = selecionado ? lugares.find((l) => mesmaPosicao(l.posicao, selecionado)) : undefined;
 
   // Cria o mapa uma única vez
   useEffect(() => {
@@ -85,10 +263,29 @@ export default function App() {
       center: CIDADES['PORTO ALEGRE'].centro,
       zoom: ZOOM_INICIAL,
     });
-    const novoOverlay = new MapboxOverlay({ layers: [] });
+    const novoOverlay = new MapboxOverlay({
+      layers: [],
+      // Clique em um lugar abre o card; clique fora fecha
+      onClick: (info) => {
+        if (!info.object) return setSelecionado(null);
+        setSelecionado((info.object as Circulo).posicao);
+        abrirEspacoParaCard(novoMapa, info.x, info.y);
+      },
+      onHover: (info) => (novoMapa.getCanvas().style.cursor = info.object ? 'pointer' : ''),
+    });
+
+    // O card fica dentro de um marcador do MapLibre: ele acompanha o lugar ao arrastar o mapa.
+    // Os eventos não passam para o mapa, senão um clique no card o fecharia.
+    for (const tipo of ['mousedown', 'click', 'dblclick', 'wheel', 'touchstart']) {
+      elementoCard.addEventListener(tipo, (evento) => evento.stopPropagation());
+    }
+    marcador.current = new maplibregl.Marker({ element: elementoCard, anchor: 'bottom', offset: [0, -18] })
+      .setLngLat(CIDADES['PORTO ALEGRE'].centro)
+      .addTo(novoMapa);
 
     novoMapa.addControl(new maplibregl.NavigationControl(), 'top-right');
     novoMapa.addControl(novoOverlay);
+    novoMapa.on('zoomend', () => setZoom(novoMapa.getZoom()));
 
     mapa.current = novoMapa;
     overlay.current = novoOverlay;
@@ -99,10 +296,14 @@ export default function App() {
     };
   }, []);
 
-  // A cada atualização troca somente os dados da camada (o mapa não é recriado)
+  // A cada atualização (ou zoom) troca somente os dados das camadas (o mapa não é recriado)
   useEffect(() => {
-    overlay.current?.setProps({ layers: [criarCamada(atualizacao?.pontos ?? [])] });
-  }, [atualizacao]);
+    overlay.current?.setProps({ layers: criarCamadas(lugares) });
+  }, [lugares]);
+
+  useEffect(() => {
+    if (selecionado) marcador.current?.setLngLat(selecionado);
+  }, [selecionado]);
 
   function encerrarConexao() {
     conexao.current?.close();
@@ -114,6 +315,7 @@ export default function App() {
     encerrarConexao();
     setAtualizacao(null);
     setErro('');
+    setSelecionado(null);
   }
 
   function selecionarCidade(novaCidade: string) {
@@ -157,7 +359,9 @@ export default function App() {
   const processados = atualizacao?.processados ?? 0;
   const total = atualizacao?.total ?? 0;
   const progresso = total > 0 ? (processados / total) * 100 : 0;
-  const pedidosContados = atualizacao?.pontos.reduce((soma, p) => soma + p.quantidade, 0) ?? 0;
+  const pontos = atualizacao?.pontos ?? [];
+  const lojasContadas = pontos.reduce((soma, p) => soma + p.lojas, 0);
+  const pedidosContados = pontos.reduce((soma, p) => soma + p.quantidade, 0);
   const speedup = tempos.sequencial && tempos.openmp ? tempos.sequencial / tempos.openmp : null;
 
   return (
@@ -199,6 +403,7 @@ export default function App() {
       </header>
 
       <main ref={divMapa} className="mapa" />
+      {lugarSelecionado && createPortal(<CardLugar lugar={lugarSelecionado} onFechar={() => setSelecionado(null)} />, elementoCard)}
 
       <footer className="status">
         <div className="indicador">
@@ -223,7 +428,7 @@ export default function App() {
         <div className="indicador">
           <span className="rotulo">Resultado</span>
           <strong>
-            {atualizacao?.pontos.length ?? 0} lojas · {pedidosContados.toLocaleString('pt-BR')} pedidos
+            {pontos.length} hubs · {lojasContadas} lojas · {pedidosContados.toLocaleString('pt-BR')} pedidos
           </strong>
         </div>
 
@@ -245,7 +450,7 @@ export default function App() {
         <div className="legenda">
           <span>poucos pedidos</span>
           <div className="gradiente" />
-          <span>muitos pedidos</span>
+          <span>15 mil+ pedidos</span>
         </div>
       </footer>
     </div>

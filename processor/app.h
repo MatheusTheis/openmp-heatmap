@@ -13,22 +13,27 @@
 #define MAX_ID_HUB      1000
 #define MAX_ID_LOJA     10000
 
+/* Hub = shopping onde ficam as dark kitchens. Várias lojas dividem o
+   mesmo hub, por isso o hub é o "local" mostrado no mapa. */
 typedef struct {
     int id;
+    char nome[TAMANHO_TEXTO];
     char cidade[TAMANHO_TEXTO];
+    double latitude;
+    double longitude;
 } Hub;
 
 typedef struct {
     int id;
     int hub_id;
     char segmento[TAMANHO_TEXTO];
-    double latitude;
-    double longitude;
     int quantidade_pedidos;
+    int quantidade_cancelados;
 } Loja;
 
 typedef struct {
     int store_id;
+    int cancelado; /* 1 se order_status == "CANCELED" */
 } Pedido;
 
 typedef struct {

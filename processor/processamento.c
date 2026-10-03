@@ -52,10 +52,15 @@ void processar_sequencial(Dados *dados, const char *cidade) {
         double cronometro = agora();
 
         for (int i = inicio; i < fim; i++) {
-            Loja *loja = buscar_loja(dados, dados->pedidos[i].store_id);
+            const Pedido *pedido = &dados->pedidos[i];
+            Loja *loja = buscar_loja(dados, pedido->store_id);
 
             if (loja_deve_ser_contada(dados, loja, cidade)) {
                 loja->quantidade_pedidos++;
+
+                if (pedido->cancelado) {
+                    loja->quantidade_cancelados++;
+                }
             }
         }
 
@@ -81,13 +86,19 @@ void processar_openmp(Dados *dados, const char *cidade) {
 
         #pragma omp parallel for
         for (int i = inicio; i < fim; i++) {
-            Loja *loja = buscar_loja(dados, dados->pedidos[i].store_id);
+            const Pedido *pedido = &dados->pedidos[i];
+            Loja *loja = buscar_loja(dados, pedido->store_id);
 
             if (loja_deve_ser_contada(dados, loja, cidade)) {
                 /* Duas threads podem achar a mesma loja ao mesmo tempo:
                    o atomic garante que nenhum incremento se perde. */
                 #pragma omp atomic
                 loja->quantidade_pedidos++;
+
+                if (pedido->cancelado) {
+                    #pragma omp atomic
+                    loja->quantidade_cancelados++;
+                }
             }
         }
 

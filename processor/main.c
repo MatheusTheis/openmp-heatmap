@@ -2,20 +2,31 @@
 #include <string.h>
 #include "app.h"
 
-/* Escreve uma linha JSON com o estado acumulado das lojas.
-   Só aparecem as lojas que já receberam pelo menos um pedido. */
+/* Escreve uma linha JSON com o estado acumulado de cada hub (soma das
+   lojas do hub). Só aparecem hubs que já receberam pelo menos um pedido. */
 void emitir_resultado(const Dados *dados, int processados, double tempo, int threads, int finalizado) {
     int primeiro = 1;
 
     printf("{\"finalizado\":%s,\"processados\":%d,\"total\":%d,\"tempo\":%.6f,\"threads\":%d,\"pontos\":[",
            finalizado ? "true" : "false", processados, dados->total_pedidos, tempo, threads);
 
-    for (int i = 0; i < dados->total_lojas; i++) {
-        const Loja *loja = &dados->lojas[i];
-        if (loja->quantidade_pedidos == 0) continue;
+    for (int h = 0; h < dados->total_hubs; h++) {
+        const Hub *hub = &dados->hubs[h];
+        int lojas = 0, quantidade = 0, cancelados = 0;
 
-        printf("%s{\"latitude\":%.7f,\"longitude\":%.7f,\"quantidade\":%d}",
-               primeiro ? "" : ",", loja->latitude, loja->longitude, loja->quantidade_pedidos);
+        for (int i = 0; i < dados->total_lojas; i++) {
+            const Loja *loja = &dados->lojas[i];
+            if (loja->hub_id != hub->id || loja->quantidade_pedidos == 0) continue;
+
+            lojas++;
+            quantidade += loja->quantidade_pedidos;
+            cancelados += loja->quantidade_cancelados;
+        }
+
+        if (quantidade == 0) continue;
+
+        printf("%s{\"hub\":\"%s\",\"latitude\":%.7f,\"longitude\":%.7f,\"lojas\":%d,\"quantidade\":%d,\"cancelados\":%d}",
+               primeiro ? "" : ",", hub->nome, hub->latitude, hub->longitude, lojas, quantidade, cancelados);
         primeiro = 0;
     }
 

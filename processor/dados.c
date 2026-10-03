@@ -73,14 +73,17 @@ int carregar_hubs(Dados *dados, const char *caminho) {
     dados->total_hubs = 0;
 
     while (fgets(linha, sizeof(linha), arquivo) != NULL) {
-        if (separar_campos(linha, campos) < 3) continue;
+        if (separar_campos(linha, campos) < 6) continue;
 
         Hub *hub = &dados->hubs[dados->total_hubs];
         hub->id = atoi(campos[0]);
         if (hub->id < 0 || hub->id >= MAX_ID_HUB) continue;
 
+        snprintf(hub->nome, TAMANHO_TEXTO, "%s", campos[1]);
         snprintf(hub->cidade, TAMANHO_TEXTO, "%s", campos[2]);
         remover_acentos(hub->cidade);
+        hub->latitude = atof(campos[4]);
+        hub->longitude = atof(campos[5]);
 
         dados->indice_hub[hub->id] = dados->total_hubs;
         dados->total_hubs++;
@@ -91,7 +94,7 @@ int carregar_hubs(Dados *dados, const char *caminho) {
 }
 
 /* stores.csv: store_id,hub_id,store_name,store_segment,store_plan_price,store_latitude,store_longitude
-   Lojas sem coordenadas são ignoradas, pois não podem aparecer no mapa. */
+   A posição no mapa vem do hub, então as coordenadas da loja não são lidas. */
 int carregar_lojas(Dados *dados, const char *caminho) {
     char linha[TAMANHO_LINHA];
     char *campos[MAX_CAMPOS];
@@ -110,8 +113,7 @@ int carregar_lojas(Dados *dados, const char *caminho) {
     dados->total_lojas = 0;
 
     while (fgets(linha, sizeof(linha), arquivo) != NULL) {
-        if (separar_campos(linha, campos) < 7) continue;
-        if (campos[5][0] == '\0' || campos[6][0] == '\0') continue;
+        if (separar_campos(linha, campos) < 4) continue;
 
         Loja *loja = &dados->lojas[dados->total_lojas];
         loja->id = atoi(campos[0]);
@@ -120,9 +122,8 @@ int carregar_lojas(Dados *dados, const char *caminho) {
         if (loja->hub_id < 0 || loja->hub_id >= MAX_ID_HUB) continue;
 
         snprintf(loja->segmento, TAMANHO_TEXTO, "%s", campos[3]);
-        loja->latitude = atof(campos[5]);
-        loja->longitude = atof(campos[6]);
         loja->quantidade_pedidos = 0;
+        loja->quantidade_cancelados = 0;
 
         dados->indice_loja[loja->id] = dados->total_lojas;
         dados->total_lojas++;
@@ -132,7 +133,7 @@ int carregar_lojas(Dados *dados, const char *caminho) {
     return 1;
 }
 
-/* orders.csv: só a coluna store_id (2ª coluna) é usada. */
+/* orders.csv: usa store_id (2ª coluna) e order_status (6ª coluna). */
 int carregar_pedidos(Dados *dados, const char *caminho) {
     char linha[TAMANHO_LINHA];
     char *campos[MAX_CAMPOS];
@@ -149,9 +150,11 @@ int carregar_pedidos(Dados *dados, const char *caminho) {
     dados->total_pedidos = 0;
 
     while (fgets(linha, sizeof(linha), arquivo) != NULL) {
-        if (separar_campos(linha, campos) < 2) continue;
+        if (separar_campos(linha, campos) < 6) continue;
 
-        dados->pedidos[dados->total_pedidos].store_id = atoi(campos[1]);
+        Pedido *pedido = &dados->pedidos[dados->total_pedidos];
+        pedido->store_id = atoi(campos[1]);
+        pedido->cancelado = strcmp(campos[5], "CANCELED") == 0;
         dados->total_pedidos++;
     }
 
