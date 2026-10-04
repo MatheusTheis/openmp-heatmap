@@ -23,6 +23,7 @@ processor/   C + OpenMP (leitura, processamento e saída JSON)
   main.c           argumentos, fluxo principal e saída JSON
 backend/     server.js: executa o processor e repassa cada linha via SSE
 frontend/    React + TypeScript + MapLibre + deck.gl (ScatterplotLayer: cor = quantidade de pedidos)
+docs/        ADR com as decisões de implementação
 ```
 
 ## Como executar
