@@ -9,6 +9,7 @@ type Modo = 'sequencial' | 'openmp';
 // Cada ponto enviado pelo C é um hub (shopping) com a soma das lojas dele
 type Ponto = {
   hub: string;
+  cidade: string;
   latitude: number;
   longitude: number;
   lojas: number;
@@ -319,11 +320,9 @@ export default function App() {
     setSelecionado(null);
   }
 
+  // O processamento cobre todas as cidades: trocar de cidade só move o mapa
   function selecionarCidade(novaCidade: string) {
-    limpar();
     setCidade(novaCidade);
-    setTempos({});
-    setThreadsOpenmp(null);
     mapa.current?.flyTo({ center: CIDADES[novaCidade].centro, zoom: ZOOM_INICIAL });
   }
 
@@ -331,7 +330,8 @@ export default function App() {
     limpar();
     setExecutando(true);
 
-    const url = `${URL_BACKEND}/processar?cidade=${encodeURIComponent(cidade)}&modo=${modo}`;
+    // Provisório até definirmos a tela: OpenMP usa a versão com reduction e todas as threads
+    const url = `${URL_BACKEND}/processar?modo=${modo === 'openmp' ? 'reduction' : 'sequencial'}`;
     const eventos = new EventSource(url);
     conexao.current = eventos;
 
@@ -362,7 +362,8 @@ export default function App() {
   const processados = atualizacao?.processados ?? 0;
   const total = atualizacao?.total ?? 0;
   const progresso = total > 0 ? (processados / total) * 100 : 0;
-  const pontos = atualizacao?.pontos ?? [];
+  // Rodapé mostra os números da cidade selecionada
+  const pontos = (atualizacao?.pontos ?? []).filter((p) => p.cidade === cidade);
   const lojasContadas = pontos.reduce((soma, p) => soma + p.lojas, 0);
   const pedidosContados = pontos.reduce((soma, p) => soma + p.quantidade, 0);
   const speedup = tempos.sequencial && tempos.openmp ? tempos.sequencial / tempos.openmp : null;
@@ -375,7 +376,7 @@ export default function App() {
 
         <label className="campo">
           Cidade
-          <select value={cidade} disabled={executando} onChange={(e) => selecionarCidade(e.target.value)}>
+          <select value={cidade} onChange={(e) => selecionarCidade(e.target.value)}>
             {Object.entries(CIDADES).map(([id, info]) => (
               <option key={id} value={id}>
                 {info.nome}
@@ -430,7 +431,7 @@ export default function App() {
         </div>
 
         <div className="indicador">
-          <span className="rotulo">Resultado</span>
+          <span className="rotulo">Resultado em {CIDADES[cidade].nome}</span>
           <strong>
             {pontos.length} hubs · {lojasContadas} lojas · {pedidosContados.toLocaleString('pt-BR')} pedidos
           </strong>

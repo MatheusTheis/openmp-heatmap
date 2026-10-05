@@ -122,15 +122,17 @@ int carregar_lojas(Dados *dados, const char *caminho) {
         if (loja->hub_id < 0 || loja->hub_id >= MAX_ID_HUB) continue;
 
         snprintf(loja->segmento, TAMANHO_TEXTO, "%s", campos[3]);
-        loja->quantidade_pedidos = 0;
-        loja->quantidade_cancelados = 0;
 
         dados->indice_loja[loja->id] = dados->total_lojas;
         dados->total_lojas++;
     }
 
     fclose(arquivo);
-    return 1;
+
+    /* Contadores começam zerados (calloc) */
+    dados->pedidos_por_loja = calloc(dados->total_lojas, sizeof(int));
+    dados->cancelados_por_loja = calloc(dados->total_lojas, sizeof(int));
+    return dados->pedidos_por_loja != NULL && dados->cancelados_por_loja != NULL;
 }
 
 /* orders.csv: usa store_id (2ª coluna) e order_status (6ª coluna). */
@@ -165,9 +167,13 @@ int carregar_pedidos(Dados *dados, const char *caminho) {
 void liberar_dados(Dados *dados) {
     free(dados->hubs);
     free(dados->lojas);
+    free(dados->pedidos_por_loja);
+    free(dados->cancelados_por_loja);
     free(dados->pedidos);
 
     dados->hubs = NULL;
     dados->lojas = NULL;
+    dados->pedidos_por_loja = NULL;
+    dados->cancelados_por_loja = NULL;
     dados->pedidos = NULL;
 }

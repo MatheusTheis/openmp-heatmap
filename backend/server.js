@@ -6,14 +6,15 @@ const path = require('path');
 const PORTA = 3001;
 const PASTA_PROCESSOR = path.join(__dirname, '..', 'processor');
 const EXECUTAVEL = path.join(PASTA_PROCESSOR, process.platform === 'win32' ? 'processor.exe' : 'processor');
-const MODOS = ['sequencial', 'openmp'];
+const MODOS = ['sequencial', 'atomic', 'reduction'];
 
 const app = express();
 
-// GET /processar?cidade=PORTO%20ALEGRE&modo=sequencial
+// GET /processar?modo=reduction&threads=4  (processa todas as cidades)
+// threads é opcional: sem ele o C usa todas as threads do computador
 app.get('/processar', (req, res) => {
-  const cidade = String(req.query.cidade || '');
   const modo = String(req.query.modo || '');
+  const threads = req.query.threads === undefined ? null : Number(req.query.threads);
 
   res.set({
     'Content-Type': 'text/event-stream',
@@ -25,13 +26,14 @@ app.get('/processar', (req, res) => {
 
   const enviar = (linha) => res.write(`data: ${linha}\n\n`);
 
-  if (!cidade || !MODOS.includes(modo)) {
-    enviar(JSON.stringify({ erro: 'Parametros invalidos: informe cidade e modo (sequencial ou openmp).' }));
+  if (!MODOS.includes(modo) || (threads !== null && !(Number.isInteger(threads) && threads >= 1 && threads <= 256))) {
+    enviar(JSON.stringify({ erro: 'Parametros invalidos: modo (sequencial, atomic ou reduction) e threads (1 a 256).' }));
     return res.end();
   }
 
   // O C roda dentro de /processor para encontrar os CSVs em ../data
-  const processo = spawn(EXECUTAVEL, [cidade, modo], { cwd: PASTA_PROCESSOR });
+  const argumentos = threads === null ? [modo] : [modo, String(threads)];
+  const processo = spawn(EXECUTAVEL, argumentos, { cwd: PASTA_PROCESSOR });
   let finalizado = false;
 
   // Cada linha JSON escrita pelo C vira um evento SSE

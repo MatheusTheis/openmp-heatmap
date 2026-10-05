@@ -4,9 +4,9 @@
 #define PASTA_DADOS     "../data/"
 
 /* Pedidos processados antes de cada atualização do mapa. Com lotes muito
-   pequenos (ex.: 5000) o custo de acordar as threads do OpenMP a cada lote
-   fica maior que o próprio trabalho do lote. */
-#define TAMANHO_LOTE    25000
+   pequenos o custo de sincronizar as threads a cada lote fica maior que o
+   próprio trabalho do lote. */
+#define TAMANHO_LOTE    50000
 #define TAMANHO_LINHA   1024
 #define MAX_CAMPOS      32
 #define TAMANHO_TEXTO   32
@@ -27,8 +27,6 @@ typedef struct {
     int id;
     int hub_id;
     char segmento[TAMANHO_TEXTO];
-    int quantidade_pedidos;
-    int quantidade_cancelados;
 } Loja;
 
 typedef struct {
@@ -42,6 +40,11 @@ typedef struct {
 
     Loja *lojas;
     int total_lojas;
+
+    /* Contadores por loja, na mesma posição do vetor lojas. Ficam em
+       vetores (e não dentro de Loja) para o reduction do OpenMP funcionar. */
+    int *pedidos_por_loja;
+    int *cancelados_por_loja;
 
     Pedido *pedidos;
     int total_pedidos;
@@ -59,10 +62,12 @@ int  carregar_pedidos(Dados *dados, const char *caminho);
 void liberar_dados(Dados *dados);
 
 /* processamento.c */
-void processar_sequencial(Dados *dados, const char *cidade);
-void processar_openmp(Dados *dados, const char *cidade);
+void processar_sequencial(Dados *dados);
+void processar_openmp_atomic(Dados *dados, int threads);
+void processar_openmp_reduction(Dados *dados, int threads);
 
 /* main.c */
-void emitir_resultado(const Dados *dados, int processados, double tempo, int threads, int finalizado);
+void emitir_resultado(const Dados *dados, int processados, double tempo,
+                      double tempo_threads, int threads, int finalizado);
 
 #endif

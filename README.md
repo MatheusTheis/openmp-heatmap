@@ -61,8 +61,8 @@ clang -O2 main.c dados.c processamento.c -o processor \
 Para testar o processador no macOS:
 
 ```bash
-./processor "PORTO ALEGRE" sequencial
-./processor "PORTO ALEGRE" openmp
+./processor sequencial
+./processor reduction
 ```
 
 **2. Backend**
@@ -83,28 +83,34 @@ npm run dev
 
 ## Sequencial x OpenMP
 
-Pela interface: escolha a cidade, o método (**Sequencial** ou **OpenMP**) e clique em **Iniciar processamento**.
+Um processamento cobre **todas as cidades** de uma vez; o seletor de cidade só move o mapa.
 
 Pelo terminal (dentro de `processor/`):
 
 ```bash
-processor.exe "PORTO ALEGRE" sequencial
-processor.exe "PORTO ALEGRE" openmp
+processor.exe sequencial
+processor.exe atomic          # OpenMP com atomic, todas as threads do computador
+processor.exe atomic 4        # OpenMP com atomic, 4 threads
+processor.exe reduction       # OpenMP com reduction, todas as threads
+processor.exe reduction 4     # OpenMP com reduction, 4 threads
 ```
 
-Cada lote de 25 000 pedidos gera uma linha JSON com o estado acumulado:
+- **atomic:** todas as threads somam nos mesmos contadores; cada `++` é indivisível.
+- **reduction:** cada thread soma numa cópia própria dos contadores; no fim de cada lote o OpenMP junta as cópias.
+
+Cada lote de 50 000 pedidos gera uma linha JSON com o estado acumulado:
 
 ```json
-{"finalizado":false,"processados":25000,"total":368999,"tempo":0.000162,"threads":1,"pontos":[{"hub":"GREEN SHOPPING","latitude":-30.0374149,"longitude":-51.2035200,"lojas":11,"quantidade":1705,"cancelados":45}]}
+{"finalizado":false,"processados":50000,"total":368999,"tempo":0.000097,"tempo_threads":0.000856,"threads":4,"pontos":[{"hub":"GREEN SHOPPING","cidade":"PORTO ALEGRE","latitude":-30.0374149,"longitude":-51.2035200,"lojas":12,"quantidade":3384,"cancelados":70}]}
 ```
 
 Os pedidos são contados por loja (`orders.store_id`) e somados por **hub**: as dark kitchens ficam dentro de hubs (shoppings), e várias lojas diferentes dividem o mesmo endereço. Cada ponto é um hub, na coordenada do `hubs.csv`; `quantidade` é o total de pedidos das lojas do hub e `cancelados` quantos têm `order_status = CANCELED` (o resto foi realizado). Clicar em um ponto no mapa abre um card com esses números.
 
-O `tempo` mede **só o processamento** (CSVs já em memória; escrita do JSON fora do cronômetro). Os dois modos produzem exatamente os mesmos pontos — muda apenas o tempo.
+O `tempo` mede **só o processamento** (CSVs já em memória; escrita do JSON fora do cronômetro). O custo de criar as threads do OpenMP vem separado, em `tempo_threads`. Todos os modos produzem exatamente os mesmos pontos — muda apenas o tempo.
 
 ## Métricas de paralelismo
 
-Depois de executar os dois modos para a mesma cidade, a interface mostra o speedup e a eficiência do OpenMP.
+Depois de executar o sequencial e o OpenMP, a interface mostra o speedup e a eficiência do OpenMP.
 
 ### Speedup
 
@@ -124,7 +130,7 @@ A eficiência relaciona o speedup com a quantidade de threads usadas:
 eficiência = speedup / número de threads × 100
 ```
 
-Ela indica quanto do potencial das threads foi aproveitado. Neste projeto, a eficiência pode ser limitada pelo custo de criar e sincronizar as regiões paralelas, pela operação `atomic` e pelo pequeno tempo de processamento de cada pedido.
+Ela indica quanto do potencial das threads foi aproveitado. Neste projeto, a eficiência pode ser limitada pelo custo de sincronizar as threads a cada lote, pela sincronização dos contadores (`atomic`, ou a soma das cópias no `reduction`) e pelo pequeno tempo de processamento de cada pedido.
 
 ### Aplicação das leis de Amdahl e Gustafson
 
