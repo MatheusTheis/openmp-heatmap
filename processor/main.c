@@ -4,7 +4,7 @@
 #include <omp.h>
 #include "app.h"
 
-/* Escreve uma linha JSON com o estado acumulado de cada hub (soma das
+/* Escreve uma linha JSON com o resultado final de cada hub (soma das
    lojas do hub). Só aparecem hubs que já receberam pelo menos um pedido. */
 void emitir_resultado(const Dados *dados, int processados, double tempo,
                       double tempo_threads, int threads, int finalizado) {

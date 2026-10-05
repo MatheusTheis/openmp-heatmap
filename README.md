@@ -96,17 +96,17 @@ processor.exe reduction 4     # OpenMP com reduction, 4 threads
 ```
 
 - **atomic:** todas as threads somam nos mesmos contadores; cada `++` é indivisível.
-- **reduction:** cada thread soma numa cópia própria dos contadores; no fim de cada lote o OpenMP junta as cópias.
+- **reduction:** cada thread soma numa cópia própria dos contadores; ao fim do laço o OpenMP junta as cópias.
 
-Cada lote de 50 000 pedidos gera uma linha JSON com o estado acumulado:
+Cada execução percorre todos os pedidos uma única vez e emite uma linha JSON final com os resultados de todas as cidades:
 
 ```json
-{"finalizado":false,"processados":50000,"total":368999,"tempo":0.000097,"tempo_threads":0.000856,"threads":4,"pontos":[{"hub":"GREEN SHOPPING","cidade":"PORTO ALEGRE","latitude":-30.0374149,"longitude":-51.2035200,"lojas":12,"quantidade":3384,"cancelados":70}]}
+{"finalizado":true,"processados":368999,"total":368999,"tempo":0.0021,"tempo_threads":0.0008,"threads":4,"pontos":[{"hub":"GREEN SHOPPING","cidade":"PORTO ALEGRE","latitude":-30.0374149,"longitude":-51.2035200,"lojas":12,"quantidade":3384,"cancelados":70}]}
 ```
 
 Os pedidos são contados por loja (`orders.store_id`) e somados por **hub**: as dark kitchens ficam dentro de hubs (shoppings), e várias lojas diferentes dividem o mesmo endereço. Cada ponto é um hub, na coordenada do `hubs.csv`; `quantidade` é o total de pedidos das lojas do hub e `cancelados` quantos têm `order_status = CANCELED` (o resto foi realizado). Clicar em um ponto no mapa abre um card com esses números.
 
-O `tempo` mede **só o processamento** (CSVs já em memória; escrita do JSON fora do cronômetro). O custo de criar as threads do OpenMP vem separado, em `tempo_threads`. Todos os modos produzem exatamente os mesmos pontos — muda apenas o tempo.
+O `tempo` mede **só o processamento** (CSVs já em memória; escrita do JSON fora do cronômetro). O custo de criar as threads do OpenMP vem separado, em `tempo_threads`. Todos os modos produzem exatamente os mesmos pontos — muda apenas o tempo. Como todos os resultados de cidade chegam juntos, trocar de cidade depois do processamento apenas muda o centro do mapa e filtra os pontos já recebidos.
 
 ## Métricas de paralelismo
 
@@ -130,19 +130,19 @@ A eficiência relaciona o speedup com a quantidade de threads usadas:
 eficiência = speedup / número de threads × 100
 ```
 
-Ela indica quanto do potencial das threads foi aproveitado. Neste projeto, a eficiência pode ser limitada pelo custo de sincronizar as threads a cada lote, pela sincronização dos contadores (`atomic`, ou a soma das cópias no `reduction`) e pelo pequeno tempo de processamento de cada pedido.
+Ela indica quanto do potencial das threads foi aproveitado. Neste projeto, a eficiência pode ser limitada pela sincronização dos contadores (`atomic`, ou a soma das cópias no `reduction`) e pelo pequeno tempo de processamento de cada pedido.
 
 ### Aplicação das leis de Amdahl e Gustafson
 
 As duas leis entram como modelos para interpretar os resultados deste trabalho. O programa mede diretamente os tempos, o speedup e a eficiência; as leis ajudam a explicar esses valores e a discutir como o comportamento mudaria com outros tamanhos de problema.
 
-A Lei de Amdahl explica o limite do ganho quando existe uma parte sequencial no programa. Neste projeto, mesmo aumentando o número de threads, etapas como a leitura dos CSVs, a emissão do JSON, a criação das regiões paralelas e as sincronizações com `atomic` continuam limitando o speedup:
+A Lei de Amdahl explica o limite do ganho quando existe uma parte sequencial no programa. Neste projeto, mesmo aumentando o número de threads, o custo de criar as threads (exibido em separado) e a sincronização dos contadores (`atomic` ou `reduction`) limitam o speedup medido no laço. A leitura dos CSVs e a emissão do JSON ficam fora do cronômetro do processamento:
 
 ```text
 speedup máximo = 1 / (s + (1 - s) / P)
 ```
 
-Nessa fórmula, `s` é a fração sequencial e `P` é o número de threads. Portanto, ela ajuda a explicar por que o OpenMP pode ter pouco ganho quando o processamento de cada lote é muito rápido.
+Nessa fórmula, `s` é a fração serial e `P` é o número de threads. Portanto, ela ajuda a explicar por que o OpenMP pode ter pouco ganho quando o trabalho total é pequeno em relação aos custos fixos de paralelização.
 
 A Lei de Gustafson considera o aumento do tamanho do problema. Se este trabalho passasse de 368.999 pedidos para milhões de pedidos, a parte paralelizável do laço de pedidos cresceria, enquanto os custos fixos teriam menor impacto relativo:
 

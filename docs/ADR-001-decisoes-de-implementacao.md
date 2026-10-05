@@ -215,4 +215,14 @@ Valores: mediana de 21 execuções (entre parênteses, o intervalo interquartil)
 - Caminhos para um ganho maior, sem alterar o resultado:
   - Abrir **uma única região paralela** (`#pragma omp parallel`) e usar `#pragma omp for` em cada lote, reaproveitando as threads em vez de abrir e fechar uma região por lote.
   - Testar no Linux, onde o libgomp costuma ter custo menor para acordar threads.
-  - Usar um volume maior de pedidos.
+- Usar um volume maior de pedidos.
+
+---
+
+## Atualização — processamento completo em uma execução
+
+Esta decisão substitui a Decisão 4 para o comportamento atual do programa. Ao iniciar, o C carrega os três CSVs completos em memória e percorre todos os pedidos em um único laço. O processador emite uma única linha JSON ao terminar, com os hubs de todas as cidades; o seletor da interface apenas move o mapa e filtra esses resultados já recebidos.
+
+No modo OpenMP, uma única região paralela distribui o vetor inteiro com `omp for`. `atomic` protege os contadores compartilhados durante esse laço; `reduction` combina as cópias privadas uma vez, ao final. A inicialização das threads continua medida separadamente, e a emissão do JSON fica fora do tempo de processamento.
+
+**Motivação:** as atualizações graduais não ficavam visíveis durante a execução. Como não davam retorno útil na tela, o processamento completo de uma vez elimina sincronizações e serializações intermediárias e garante que os dados de todas as cidades estejam disponíveis após uma execução.

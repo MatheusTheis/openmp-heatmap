@@ -53,7 +53,7 @@ const CORES_BASE: [number, number, number][] = [
 ];
 
 // Escala fixa: a partir desta quantidade o lugar fica vermelho.
-// Assim cada lugar esquenta conforme os lotes chegam.
+// Cada lugar recebe a cor correspondente ao total final de pedidos.
 const PEDIDOS_COR_MAXIMA = 15000;
 
 // Brilho de cada lugar: círculos maiores e transparentes da mesma cor do centro
@@ -305,7 +305,7 @@ export default function App() {
     };
   }, []);
 
-  // A cada atualização (ou zoom) troca somente os dados das camadas (o mapa não é recriado)
+  // Ao receber resultados (ou mudar o zoom), atualiza as camadas sem recriar o mapa.
   useEffect(() => {
     overlay.current?.setProps({ layers: criarCamadas(lugares) });
   }, [lugares]);
@@ -372,9 +372,7 @@ export default function App() {
     };
   }
 
-  const processados = atualizacao?.processados ?? 0;
   const total = atualizacao?.total ?? 0;
-  const progresso = total > 0 ? (processados / total) * 100 : 0;
   // Rodapé mostra os números da cidade selecionada
   const pontos = (atualizacao?.pontos ?? []).filter((p) => p.cidade === cidade);
   const lojasContadas = pontos.reduce((soma, p) => soma + p.lojas, 0);
@@ -547,17 +545,13 @@ export default function App() {
 
       <footer className="status">
         <div className="indicador">
-          <span className="rotulo">Processados</span>
-          <strong>
-            {processados.toLocaleString('pt-BR')} / {total.toLocaleString('pt-BR')}
-          </strong>
-        </div>
-
-        <div className="indicador progresso">
-          <span className="rotulo">Progresso</span>
-          <div className="barra">
-            <div className="preenchimento" style={{ width: `${progresso}%` }} />
-          </div>
+          <span className="rotulo">Pedidos considerados</span>
+          <strong>{atualizacao?.finalizado ? total.toLocaleString('pt-BR') : executando ? 'Processando CSV completo…' : '—'}</strong>
+          <span className="rotulo">
+            {atualizacao?.finalizado
+              ? `${Object.keys(CIDADES).length} cidades carregadas`
+              : 'Uma execução processa todas as cidades'}
+          </span>
         </div>
 
         <div className="indicador">
@@ -593,7 +587,7 @@ export default function App() {
 
         <div className="mensagem">
           {erro && <span className="erro">{erro}</span>}
-          {executando && !atualizacao && <span>Carregando CSVs no processador C…</span>}
+          {executando && !atualizacao && <span>Processando todos os pedidos e cidades no C…</span>}
           {!erro && atualizacao?.finalizado && <span className="concluido">Processamento concluído</span>}
         </div>
 

@@ -3,10 +3,6 @@
 
 #define PASTA_DADOS     "../data/"
 
-/* Pedidos processados antes de cada atualização do mapa. Com lotes muito
-   pequenos o custo de sincronizar as threads a cada lote fica maior que o
-   próprio trabalho do lote. */
-#define TAMANHO_LOTE    50000
 #define TAMANHO_LINHA   1024
 #define MAX_CAMPOS      32
 #define TAMANHO_TEXTO   32

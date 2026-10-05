@@ -316,11 +316,6 @@ button.primario {
   font-variant-numeric: tabular-nums;
 }
 
-.progresso {
-  flex: 1;
-  min-width: 160px;
-}
-
 .barra {
   height: 10px;
   margin-top: 4px;
