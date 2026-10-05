@@ -1,5 +1,6 @@
 node_modules/
 processor/*.exe
+processor/processor
 frontend/dist/
 
 # CSVs do dataset que o projeto não usa

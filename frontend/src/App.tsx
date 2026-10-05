@@ -249,6 +249,7 @@ export default function App() {
   const [executando, setExecutando] = useState(false);
   const [erro, setErro] = useState('');
   const [tempos, setTempos] = useState<Partial<Record<Modo, number>>>({});
+  const [threadsOpenmp, setThreadsOpenmp] = useState<number | null>(null);
   const [zoom, setZoom] = useState(ZOOM_INICIAL);
   const [selecionado, setSelecionado] = useState<[number, number] | null>(null);
 
@@ -322,6 +323,7 @@ export default function App() {
     limpar();
     setCidade(novaCidade);
     setTempos({});
+    setThreadsOpenmp(null);
     mapa.current?.flyTo({ center: CIDADES[novaCidade].centro, zoom: ZOOM_INICIAL });
   }
 
@@ -346,6 +348,7 @@ export default function App() {
 
       if (dados.finalizado) {
         setTempos((anteriores) => ({ ...anteriores, [modo]: dados.tempo }));
+        if (modo === 'openmp') setThreadsOpenmp(dados.threads);
         encerrarConexao();
       }
     };
@@ -363,6 +366,7 @@ export default function App() {
   const lojasContadas = pontos.reduce((soma, p) => soma + p.lojas, 0);
   const pedidosContados = pontos.reduce((soma, p) => soma + p.quantidade, 0);
   const speedup = tempos.sequencial && tempos.openmp ? tempos.sequencial / tempos.openmp : null;
+  const eficiencia = speedup && threadsOpenmp ? (speedup / threadsOpenmp) * 100 : null;
 
   return (
     <div className="app">
@@ -439,6 +443,11 @@ export default function App() {
             {tempos.openmp !== undefined ? formatarTempo(tempos.openmp) : '—'}
             {speedup ? ` · ${speedup.toFixed(2)}×` : ''}
           </strong>
+        </div>
+
+        <div className="indicador">
+          <span className="rotulo">Eficiência</span>
+          <strong>{eficiencia !== null ? `${eficiencia.toFixed(1)}%` : '—'}</strong>
         </div>
 
         <div className="mensagem">
