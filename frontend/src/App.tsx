@@ -5,6 +5,8 @@ import { MapboxOverlay } from '@deck.gl/mapbox';
 import { ScatterplotLayer } from '@deck.gl/layers';
 
 type Modo = 'sequencial' | 'openmp';
+type EstrategiaOpenMP = 'atomic' | 'reduction';
+type ConfiguracaoThreads = 'todas' | 'fixo';
 
 // Cada ponto enviado pelo C é um hub (shopping) com a soma das lojas dele
 type Ponto = {
@@ -22,6 +24,7 @@ type Atualizacao = {
   processados: number;
   total: number;
   tempo: number;
+  tempo_threads: number;
   threads: number;
   pontos: Ponto[];
   erro?: string;
@@ -246,6 +249,10 @@ export default function App() {
 
   const [cidade, setCidade] = useState('PORTO ALEGRE');
   const [modo, setModo] = useState<Modo>('sequencial');
+  const [estrategiaOpenMP, setEstrategiaOpenMP] = useState<EstrategiaOpenMP>('reduction');
+  const [configuracaoThreads, setConfiguracaoThreads] = useState<ConfiguracaoThreads>('todas');
+  const [quantidadeThreads, setQuantidadeThreads] = useState(4);
+  const [opcoesOpenMPAbertas, setOpcoesOpenMPAbertas] = useState(false);
   const [atualizacao, setAtualizacao] = useState<Atualizacao | null>(null);
   const [executando, setExecutando] = useState(false);
   const [erro, setErro] = useState('');
@@ -330,8 +337,14 @@ export default function App() {
     limpar();
     setExecutando(true);
 
-    // Provisório até definirmos a tela: OpenMP usa a versão com reduction e todas as threads
-    const url = `${URL_BACKEND}/processar?modo=${modo === 'openmp' ? 'reduction' : 'sequencial'}`;
+    const parametros = new URLSearchParams({
+      modo: modo === 'openmp' ? estrategiaOpenMP : 'sequencial',
+    });
+    if (modo === 'openmp' && configuracaoThreads === 'fixo') {
+      parametros.set('threads', String(quantidadeThreads));
+    }
+
+    const url = `${URL_BACKEND}/processar?${parametros.toString()}`;
     const eventos = new EventSource(url);
     conexao.current = eventos;
 
@@ -388,12 +401,134 @@ export default function App() {
         <div className="campo">
           Método
           <div className="alternador">
-            <button className={modo === 'sequencial' ? 'ativo' : ''} disabled={executando} onClick={() => setModo('sequencial')}>
+            <button
+              className={modo === 'sequencial' ? 'ativo' : ''}
+              disabled={executando}
+              onClick={() => {
+                setModo('sequencial');
+                setOpcoesOpenMPAbertas(false);
+              }}
+            >
               Sequencial
             </button>
-            <button className={modo === 'openmp' ? 'ativo' : ''} disabled={executando} onClick={() => setModo('openmp')}>
-              OpenMP
-            </button>
+            <div
+              className="openmp-menu"
+              onMouseEnter={() => setOpcoesOpenMPAbertas(true)}
+              onMouseLeave={(evento) => {
+                if (!evento.currentTarget.contains(document.activeElement)) setOpcoesOpenMPAbertas(false);
+              }}
+              onFocusCapture={() => setOpcoesOpenMPAbertas(true)}
+              onBlur={(evento) => {
+                if (!evento.currentTarget.contains(evento.relatedTarget as Node | null)) {
+                  setOpcoesOpenMPAbertas(false);
+                }
+              }}
+            >
+              <button
+                type="button"
+                className={`openmp-trigger ${modo === 'openmp' ? 'ativo' : ''}`}
+                disabled={executando}
+                aria-expanded={opcoesOpenMPAbertas}
+                aria-controls="opcoes-openmp"
+                onClick={() => {
+                  setModo('openmp');
+                  setOpcoesOpenMPAbertas(true);
+                }}
+              >
+                OpenMP <span aria-hidden="true">⌄</span>
+              </button>
+
+              <div
+                id="opcoes-openmp"
+                className={`openmp-popover ${opcoesOpenMPAbertas ? 'visivel' : ''}`}
+                role="group"
+                aria-label="Opções OpenMP"
+              >
+                <span className="openmp-titulo">Quantidade de threads</span>
+                <div className="openmp-escolhas" role="radiogroup" aria-label="Quantidade de threads">
+                  <label className={`openmp-escolha ${configuracaoThreads === 'todas' ? 'selecionada' : ''}`}>
+                    <input
+                      type="radio"
+                      name="configuracao-threads"
+                      value="todas"
+                      checked={configuracaoThreads === 'todas'}
+                      disabled={executando}
+                      onChange={() => {
+                        setModo('openmp');
+                        setConfiguracaoThreads('todas');
+                      }}
+                    />
+                    <span>Todas as threads</span>
+                    <small>automático</small>
+                  </label>
+                  <label className={`openmp-escolha ${configuracaoThreads === 'fixo' ? 'selecionada' : ''}`}>
+                    <input
+                      type="radio"
+                      name="configuracao-threads"
+                      value="fixo"
+                      checked={configuracaoThreads === 'fixo'}
+                      disabled={executando}
+                      onChange={() => {
+                        setModo('openmp');
+                        setConfiguracaoThreads('fixo');
+                      }}
+                    />
+                    <span>Número fixo</span>
+                  </label>
+                </div>
+
+                {configuracaoThreads === 'fixo' && (
+                  <label className="openmp-quantidade">
+                    Threads
+                    <input
+                      type="number"
+                      min="1"
+                      max="256"
+                      step="1"
+                      value={quantidadeThreads}
+                      disabled={executando}
+                      aria-label="Número fixo de threads"
+                      onChange={(evento) => {
+                        const valor = Number(evento.target.value);
+                        setModo('openmp');
+                        setQuantidadeThreads(Math.max(1, Math.min(256, Math.trunc(valor) || 1)));
+                      }}
+                    />
+                  </label>
+                )}
+
+                <hr />
+                <span className="openmp-titulo">Estratégia de sincronização</span>
+                <div className="openmp-algoritmos" role="group" aria-label="Estratégia de sincronização">
+                  <button
+                    type="button"
+                    className={`openmp-algoritmo ${estrategiaOpenMP === 'atomic' ? 'selecionado' : ''}`}
+                    aria-pressed={estrategiaOpenMP === 'atomic'}
+                    disabled={executando}
+                    onClick={() => {
+                      setModo('openmp');
+                      setEstrategiaOpenMP('atomic');
+                    }}
+                  >
+                    <strong>Atomic</strong>
+                    <small>Contador compartilhado</small>
+                  </button>
+                  <button
+                    type="button"
+                    className={`openmp-algoritmo ${estrategiaOpenMP === 'reduction' ? 'selecionado' : ''}`}
+                    aria-pressed={estrategiaOpenMP === 'reduction'}
+                    disabled={executando}
+                    onClick={() => {
+                      setModo('openmp');
+                      setEstrategiaOpenMP('reduction');
+                    }}
+                  >
+                    <strong>Reduction</strong>
+                    <small>Soma por thread</small>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -426,8 +561,13 @@ export default function App() {
         </div>
 
         <div className="indicador">
-          <span className="rotulo">Tempo{atualizacao ? ` (${atualizacao.threads} thread${atualizacao.threads > 1 ? 's' : ''})` : ''}</span>
+          <span className="rotulo">
+            Tempo{atualizacao ? ` (${atualizacao.threads} thread${atualizacao.threads > 1 ? 's' : ''})` : ''}
+          </span>
           <strong>{atualizacao ? formatarTempo(atualizacao.tempo) : '—'}</strong>
+          {modo === 'openmp' && atualizacao && (
+            <span className="rotulo">Criação das threads: {formatarTempo(atualizacao.tempo_threads)}</span>
+          )}
         </div>
 
         <div className="indicador">

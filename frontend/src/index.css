@@ -24,6 +24,8 @@ body {
 /* ---------- Controles ---------- */
 
 .controles {
+  position: relative;
+  z-index: 5;
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
@@ -71,6 +73,189 @@ select:disabled {
 
 .alternador button:first-child {
   border-radius: 6px 0 0 6px;
+}
+
+.alternador > .openmp-menu {
+  position: relative;
+  margin-left: -1px;
+}
+
+.openmp-menu::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 286px;
+  height: 10px;
+}
+
+.alternador .openmp-trigger {
+  border-radius: 0 6px 6px 0;
+}
+
+.alternador .openmp-trigger.ativo {
+  background: #e6e8eb;
+  color: #111317;
+}
+
+.openmp-popover {
+  display: none;
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  z-index: 10;
+  width: 286px;
+  padding: 16px;
+  border: 1px solid #3a404a;
+  border-radius: 9px;
+  background: #20242b;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.5);
+  color: #e6e8eb;
+}
+
+.openmp-menu:hover .openmp-popover,
+.openmp-menu:focus-within .openmp-popover,
+.openmp-popover.visivel {
+  display: block;
+}
+
+.openmp-popover::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 25px;
+  width: 10px;
+  height: 10px;
+  border-top: 1px solid #3a404a;
+  border-left: 1px solid #3a404a;
+  background: #20242b;
+  transform: rotate(45deg);
+}
+
+.openmp-titulo {
+  display: block;
+  margin: 0 0 9px;
+  color: #9aa1ab;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.openmp-escolhas {
+  display: grid;
+  gap: 7px;
+}
+
+.openmp-escolha {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 37px;
+  padding: 0 10px;
+  border: 1px solid #363c46;
+  border-radius: 6px;
+  background: #191c22;
+  color: #e6e8eb;
+  cursor: pointer;
+}
+
+.openmp-escolha.selecionada,
+.openmp-algoritmo.selecionado {
+  border-color: #cb6846;
+  background: #2a2928;
+}
+
+.openmp-escolha input {
+  margin: 0;
+  accent-color: #f46d43;
+}
+
+.openmp-escolha span {
+  flex: 1;
+}
+
+.openmp-escolha small,
+.openmp-algoritmo small {
+  color: #9aa1ab;
+  font-size: 11px;
+}
+
+.openmp-quantidade {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 8px 0 0 29px;
+  color: #9aa1ab;
+  font-size: 12px;
+}
+
+.openmp-quantidade input {
+  width: 76px;
+  height: 33px;
+  padding: 0 9px;
+  border: 1px solid #414752;
+  border-radius: 5px;
+  background: #14171c;
+  color: #e6e8eb;
+  font: inherit;
+  font-size: 14px;
+}
+
+.openmp-popover hr {
+  margin: 15px 0 13px;
+  border: 0;
+  border-top: 1px solid #393e47;
+}
+
+.openmp-algoritmos {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.openmp-algoritmo {
+  min-height: 61px;
+  padding: 9px 10px;
+  border: 1px solid #363c46;
+  border-radius: 6px;
+  background: #191c22;
+  color: #e6e8eb;
+  text-align: left;
+  cursor: pointer;
+}
+
+.openmp-algoritmo strong,
+.openmp-algoritmo small {
+  display: block;
+}
+
+.openmp-algoritmo strong {
+  margin-bottom: 2px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.openmp-algoritmo.selecionado {
+  box-shadow: inset 0 0 0 1px #cb6846;
+}
+
+.openmp-escolha:has(input:disabled),
+.openmp-algoritmo:disabled,
+.openmp-quantidade input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 650px) {
+  .openmp-popover {
+    left: -84px;
+    width: min(286px, calc(100vw - 38px));
+  }
+
+  .openmp-popover::before {
+    left: 108px;
+  }
 }
 
 .alternador button:last-child {
