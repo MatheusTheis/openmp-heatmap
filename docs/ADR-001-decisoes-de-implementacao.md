@@ -1,7 +1,7 @@
 # ADR-001: Decisões de implementação do OpenMP Heatmap
 
 - **Status:** aceita
-- **Data:** 2026-10-03
+- **Data:** 2026-10-03 (atualizado em 2026-10-05)
 
 ## Contexto
 
@@ -19,14 +19,14 @@ Requisitos que guiaram as decisões:
 
 1. As duas versões precisam produzir **exatamente o mesmo resultado**.
 2. A comparação de tempo precisa ser **justa**: sem medir disco e sem atrasos artificiais.
-3. O mapa deve ser atualizado **aos poucos**, enquanto o processamento acontece.
+3. O mapa deve apresentar os resultados de forma clara, sem incluir atrasos artificiais na comparação.
 4. O código deve ser **simples de apresentar**, com a diferença entre as versões visível.
 
 ---
 
 ## Decisão 1 — OpenMP como ferramenta de paralelismo
 
-**Decisão:** paralelizar o laço de pedidos com `#pragma omp parallel for`, em C puro, compilado com GCC (`-fopenmp`).
+**Decisão:** paralelizar o laço de pedidos em C puro, compilado com GCC (`-fopenmp`), oferecendo duas estratégias: `atomic` e `reduction`.
 
 **Alternativas consideradas:**
 
@@ -40,28 +40,30 @@ Requisitos que guiaram as decisões:
 **Motivos:**
 
 - O problema é de **memória compartilhada**: todos os pedidos e lojas ficam no mesmo processo.
-- Uma linha transforma o laço sequencial em paralelo. A função `processar_openmp` é igual a `processar_sequencial`, mudando só os `#pragma`, e isso fica evidente na apresentação.
+- As três versões percorrem o mesmo vetor de pedidos, aplicam os mesmos filtros e produzem os mesmos pontos. A diferença fica restrita à forma como os contadores são atualizados.
+- A interface permite comparar o sequencial com cada estratégia OpenMP e escolher todas as threads disponíveis ou uma quantidade fixa (de 1 a 256).
 - É portável (GCC, Clang, MSVC) e é o padrão usado na disciplina.
 
 **Consequência:** o programa depende do runtime do OpenMP (libgomp). No Windows, esse runtime tem custo alto para criar e acordar threads (ver Decisão 4).
 
 ---
 
-## Decisão 2 — Proteger os incrementos com `#pragma omp atomic`
+## Decisão 2 — Comparar `atomic` e `reduction` para os contadores por loja
 
-**Problema:** duas threads podem encontrar a mesma loja ao mesmo tempo e incrementar `quantidade_pedidos`. Sem proteção, um dos incrementos se perde (condição de corrida).
+**Problema:** duas threads podem encontrar a mesma loja ao mesmo tempo e incrementar seus contadores. Sem sincronização, um dos incrementos se perde (condição de corrida).
 
-**Decisão:** usar `#pragma omp atomic` em cada incremento (total de pedidos e cancelados).
+**Decisão:** manter os contadores de pedidos e cancelamentos em vetores separados da struct `Loja` e disponibilizar dois modos paralelos:
 
-**Alternativas:**
+- **`atomic`:** todas as threads usam os mesmos vetores; cada incremento é protegido com `#pragma omp atomic`.
+- **`reduction`:** `reduction(+: pedidos_loja[:n], cancelados_loja[:n])` cria cópias privadas dos vetores para cada thread e as soma ao fim do laço.
 
-- `#pragma omp critical`: é uma trava única que serializa todos os incrementos, o que é mais lento que o atomic.
-- `reduction(+: vetor[:n])`: exige mover o contador para um vetor separado, fora da struct `Loja`, e cria uma cópia privada por thread a cada lote.
-- Contadores locais por thread com soma manual no final: resolve, mas com mais código para explicar.
+**Alternativas não adotadas:**
 
-**Evidência:** removendo o `atomic`, São Paulo perdeu entre ~1.200 e ~1.600 pedidos por execução (de 134.594 a 135.002, quando o correto é 136.209). Com o `atomic`, 30 de 30 execuções saíram idênticas ao sequencial.
+- `#pragma omp critical`: uma trava única serializaria todos os incrementos.
+- Contadores locais por thread com soma manual: tem o mesmo objetivo da reduction, mas exigiria alocação e combinação explícitas.
+- Incrementos sem sincronização: falham por condição de corrida; na implementação anterior, São Paulo perdeu entre ~1.200 e ~1.600 pedidos por execução.
 
-**Consequência:** há disputa quando muitas threads incrementam a mesma loja muito pedida. É aceitável pela simplicidade e pela garantia de correção.
+**Consequências:** `atomic` é a referência mais direta e evidencia a disputa por um contador compartilhado. `reduction` evita essa disputa durante o laço, mas usa memória adicional proporcional a `número de lojas × número de threads` e inclui a combinação final na medição. Ambos os modos devem ser idênticos ao sequencial no resultado.
 
 ---
 
@@ -83,29 +85,25 @@ Requisitos que guiaram as decisões:
 
 ---
 
-## Decisão 4 — Processar em lotes de 25.000 pedidos
+## Decisão 4 — Processar todos os pedidos e cidades em uma execução
 
-**Contexto:** para o mapa crescer aos poucos, os pedidos são processados em lotes, e depois de cada lote o estado acumulado é enviado. Cada lote abre uma região paralela nova (fork/join).
+**Contexto:** a versão inicial processava uma cidade por vez em lotes e enviava atualizações graduais. Na prática, elas chegavam rápido demais para serem percebidas e obrigavam o usuário a repetir o processamento para trocar de cidade.
 
-**Medição** (WinLibs GCC 16.2, Windows 11):
+**Decisão:** carregar os três CSVs uma vez e percorrer todo o vetor de pedidos em um único laço. A saída contém todos os hubs, inclusive sua cidade; depois de processar, o seletor da interface apenas move o mapa e filtra os pontos já recebidos.
 
-- Abrir uma região paralela custa de **20 a 180 µs** para acordar as threads.
-- Criar as threads na primeira região custa de **1 a 8 ms**.
-- Com lotes de 5.000 pedidos (~70 µs de trabalho), o OpenMP ficava **mais lento** que o sequencial (0,6× a 0,9×), porque o custo para acordar as threads era maior que o próprio trabalho do lote.
+Nos modos OpenMP, uma única região `#pragma omp parallel` cria as threads uma vez e `#pragma omp for` distribui o vetor completo. Não há mais lotes nem múltiplos eventos intermediários.
 
-**Decisão:** 25.000 pedidos por lote, o que dá 15 atualizações. Um lote leva ~360 µs no sequencial e ~115 µs no OpenMP.
-
-**Consequência:** o mapa mostra menos etapas (15 em vez de 74), em troca de o paralelismo compensar a cada lote.
+**Consequências:** elimina custos repetidos de fork/join e disponibiliza todas as cidades após uma execução. O processador agora emite uma única linha JSON final; o SSE é mantido como canal entre C, backend e navegador.
 
 ---
 
 ## Decisão 5 — Medir só o processamento, com `timespec_get`
 
-**Decisão:** o cronômetro envolve apenas o laço de cada lote, e os tempos dos lotes são somados.
+**Decisão:** o cronômetro principal envolve apenas o laço que percorre todos os pedidos. Nos modos OpenMP, a criação e o despertar das threads são medidos separadamente em `tempo_threads`; o tempo do laço é enviado em `tempo`.
 
 - A leitura dos CSVs fica **fora** da medição, para não comparar velocidade de disco.
 - A escrita do JSON também fica **fora**, porque é saída e não processamento.
-- A criação das threads fica **dentro** da medição. O OpenMP não é "aquecido" antes, para não favorecê-lo.
+- A criação das threads fica fora de `tempo`, mas é exposta em `tempo_threads`; isso permite analisar separadamente o custo fixo do runtime sem escondê-lo.
 
 **Por que não `omp_get_wtime()`:** no GCC para Windows (MinGW), `omp_get_wtime()` usa `_ftime` e só mede de 1 em 1 ms (`omp_get_wtick()` retorna 0,001). Isso é maior que o tempo de um lote inteiro.
 
@@ -115,7 +113,7 @@ Requisitos que guiaram as decisões:
 
 ## Decisão 6 — Nenhum atraso artificial
 
-Não há `sleep`, `usleep` nem `setTimeout` para deixar o processamento mais lento ou mais visível. Depois de ~1 s lendo os CSVs, as 15 atualizações chegam ao navegador em cerca de 12 ms, então o mapa aparece quase de uma vez. A escolha foi consciente: preferimos uma visualização rápida a uma comparação manipulada.
+Não há `sleep`, `usleep` nem `setTimeout` para deixar o processamento mais lento ou mais visível. Depois da leitura dos CSVs, apenas o resultado final é enviado. A interface informa que o CSV completo está sendo processado em vez de simular progresso que não seria percebido.
 
 ---
 
@@ -123,7 +121,7 @@ Não há `sleep`, `usleep` nem `setTimeout` para deixar o processamento mais len
 
 **Decisão:**
 
-1. O `processor.exe` imprime uma linha JSON por lote (`printf` + `fflush`).
+1. O `processor.exe` imprime uma única linha JSON final (`printf` + `fflush`), com os hubs de todas as cidades, o tempo de processamento, o custo de criação das threads e a quantidade de threads usada.
 2. O backend (Node + Express) executa o processo e transforma cada linha em um evento **Server-Sent Events**.
 3. O navegador recebe os eventos com `EventSource`.
 
@@ -187,7 +185,9 @@ Não há `sleep`, `usleep` nem `setTimeout` para deixar o processamento mais len
 
 ---
 
-## Resultados medidos
+## Medições históricas da arquitetura por cidade e por lotes
+
+> Estes números pertencem à arquitetura anterior, substituída pelas Decisões 2 e 4. São mantidos como registro do experimento original, não como benchmark da implementação atual.
 
 Ambiente: AMD Ryzen 7 5700X3D (8 núcleos / 16 threads), Windows 11, GCC 16.2 (WinLibs), `-O2`, 16 threads no OpenMP.
 
@@ -211,18 +211,7 @@ Valores: mediana de 21 execuções (entre parênteses, o intervalo interquartil)
 
 ## Consequências e próximos passos
 
-- O dataset é pequeno para mostrar um ganho grande de forma estável. A medição varia com a carga do sistema operacional, então vale executar cada modo mais de uma vez.
-- Caminhos para um ganho maior, sem alterar o resultado:
-  - Abrir **uma única região paralela** (`#pragma omp parallel`) e usar `#pragma omp for` em cada lote, reaproveitando as threads em vez de abrir e fechar uma região por lote.
-  - Testar no Linux, onde o libgomp costuma ter custo menor para acordar threads.
-- Usar um volume maior de pedidos.
-
----
-
-## Atualização — processamento completo em uma execução
-
-Esta decisão substitui a Decisão 4 para o comportamento atual do programa. Ao iniciar, o C carrega os três CSVs completos em memória e percorre todos os pedidos em um único laço. O processador emite uma única linha JSON ao terminar, com os hubs de todas as cidades; o seletor da interface apenas move o mapa e filtra esses resultados já recebidos.
-
-No modo OpenMP, uma única região paralela distribui o vetor inteiro com `omp for`. `atomic` protege os contadores compartilhados durante esse laço; `reduction` combina as cópias privadas uma vez, ao final. A inicialização das threads continua medida separadamente, e a emissão do JSON fica fora do tempo de processamento.
-
-**Motivação:** as atualizações graduais não ficavam visíveis durante a execução. Como não davam retorno útil na tela, o processamento completo de uma vez elimina sincronizações e serializações intermediárias e garante que os dados de todas as cidades estejam disponíveis após uma execução.
+- O dataset continua pequeno para mostrar ganho grande de modo estável; a comparação deve usar múltiplas execuções, registrando o modo e a quantidade de threads.
+- A interface calcula e mostra `speedup = tempo sequencial / tempo OpenMP` e `eficiência = speedup / threads × 100`. São métricas da execução corrente; não são valores fixos do ADR.
+- `tempo_threads` permite discutir o custo de criação da equipe OpenMP sem misturá-lo ao tempo do laço. A leitura dos CSVs e a emissão do JSON continuam fora das métricas.
+- Para investigar escalabilidade, vale testar mais pedidos, diferentes quantidades de threads e Linux, onde o custo do runtime pode ser diferente.
